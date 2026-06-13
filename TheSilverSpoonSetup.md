@@ -1,3 +1,5 @@
+Challenge rating: ⭐⭐
+
 "If it works, it works.. Right?"
 
 A family of 4 living in a cozy 61m² apartment reached out to their friend Hembo, a well-meaning but overzealous IT enthusiast, to set up their home network. 
