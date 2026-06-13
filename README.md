@@ -21,10 +21,10 @@ Before downloading anything, read the .md file that matches the name of the chal
 When you're ready, follow these steps:
 
 
-📥 Download the raw .zip file
-📂 Extract the folder
-🔓 Open unsolved.pkt to begin the challenge
-🏁 Open solved.pkt to compare your solution when you're done
+📥 Download the raw .zip file <br />
+📂 Extract the folder <br />
+🔓 Open unsolved.pkt to begin the challenge <br />
+🏁 Open solved.pkt to compare your solution when you're done <br />
 
 
 
