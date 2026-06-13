@@ -1,4 +1,5 @@
 # The Silent Treatment
+Challenge rating: ⭐
 
 Please feel free to try it out! This is a beginner friendly Lab challenge.
 
