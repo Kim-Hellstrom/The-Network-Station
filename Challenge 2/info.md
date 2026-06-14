@@ -1,5 +1,5 @@
 # The Silver Spoon Setup
-Challenge rating: ⭐⭐
+Difficulty: ⭐⭐
 
 "If it works, it works.. Right?"
 
