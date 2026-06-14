@@ -20,7 +20,7 @@ Before downloading anything, read the .md file that matches the name of the chal
 
 When you're ready, follow these steps:
 
-
+⭐ Difficulty is set to ⭐, ⭐⭐, ⭐⭐⭐, ⭐⭐⭐⭐, ⭐⭐⭐⭐⭐ [easiest - most difficult] This is a personal experience grade.
 📥 Download the raw .zip file <br />
 📂 Extract the folder <br />
 🔓 Open unsolved.pkt to begin the challenge <br />
