@@ -1,92 +1,135 @@
 #!/bin/bash
 
+# ====================
+# GLOBAL VARIABLES
+# ====================
+
 fail_counter=0 #Set the number of attempts
+TARGET_INTERFACE=""
+
+
+# =====================
+# Monitoring Methods
+# =====================
 
 # Dynamically identifies interface in column 5
-TARGET_INTERFACE=$(ip route show | grep default | awk '{print $5}')
-echo "Targeting active interface: $TARGET_INTERFACE"
-echo "Press [CTRL] to exit the monitoring process"
-echo "-----------------------------------------------------"
+get_active_interface()
+{
+	ip route show | grep default | awk '{print $5}'
+}
 
-# ================================
-# MONITORING LAYER 3 CONNECTION
-# ================================
 
-# continually checks a response from an intended 100% reliable server
-while true; do
+ping_target()
+{
+	local interface=$1
+	local target_ip=$2
+	local count=$3
+
+	ping -q -c "$count" -W 2 -I "$interface" "$target_ip" > /dev/null 2>&1
+	return $?
+}
+
+
+# ===================
+# RECOVERY METHODS
+# ===================
+
+recover_dhcp()
+{
+	local interface=$1
+	echo "[$(date +%T)]: Phase 1 -> Releasing and renewing IP lease via DHCP on $interface.."
+	sudo dhclient -r "$interface"
+	sleep 3
+	sudo dhclient "$interface"
+	echo "[$(date +%T)]: DHCP lease renewed. Retrying connectoin test.."
+}
+
+
+recover_interface_flap()
+{
+	local interface=$1
+	echo "[$(date +%T)]: Phase 2-> Toggling interface port state (shutdown / no shutdown): $interface)"
+	sudo /usr/sbin/ip link set "$interface" down
+	echo "$interface is SHUTDOWN. Waiting 10 seconds..."
+	sleep 10
+	sudo /usr/sbin/ip link set "$interface" up
+	echo "$interface is UP (no shutdown). Retrying connection test..."
+}
+
+
+recover_route_failover()
+{
+	local primary_if=$1
+	local backup_if="enp3s0"
+	local backup_gw="192.168.1.1"
 	
-	# 2 & 4. Ping the server quietly, count to 3, and redirect text away
-	ping -q -c 3 -W 2 -I $TARGET_INTERFACE 8.8.8.8 > /dev/null
+	echo "[$(date +%T)]: Phase 3 -> Changing Route Failover to Backup interface..."
+	sudo /usr/sbin/ip link set "$primary_if" down
+	sudo /usr/sbin/ip route del default dev "$primary_if" > /dev/null 2>&1
+	sudo /usr/sbin/ip route add default via "$backup_gw" dev "$backup_if"
+	echo "[$(date +%T)]: FAILOVER COMPLETE. System shifted routing engine to $backup_if"
+}
 
-	# 3. Check the exit status condition
-	if [ $? -eq 0 ]; then
-		echo "[$(date +%T)]: HEALTHY. Packets are flowing through $TARGET_INTERFACE."
-		fail_counter=0
-	else
-    		echo "[$(date +%T)]: Layer 3 CRITICAL! 'Black Hole' detected on $TARGET_INTERFACE!"
-		((fail_counter++))
+# ==============
+# MAIN SCRIPT
+# ==============
+
+main()
+{
+	TARGET_INTERFACE=$(get_active_interface)
+
+	if [ -z "$TARGET_INTERFACE" ]; then
+		echo "[CRITICAL] No default route interface detected! Exiting.."
+		exit 1
 	fi
 
-	# Check if threshold has been broken
-	if [ $fail_counter -ge 4 ]; then
-		echo "[$(date +%T)]: Threshhold breached ($fail_counter errors). Initialize phase 1 recovery.."
+	echo "Targeting active interface: $TARGET_INTERFACE"
+	echo "Press [CTRL+C] to exit the monitoring process"
+	echo "--------------------------------------------------"
 
-# =========================
-# ERROR MANAGEMENT STEPS
-# =========================
-	
-		# =================================
-		#  PHASE 1: DHCP RELEASE / RENEW
-		# =================================
-
-		echo "Phase 1: Releasing and renewing IP lease via DHCP.."
-		sudo dhclient -r $TARGET_INTERFACE
-		sleep 3
-		sudo dhclient $TARGET_INTERFACE
-		echo "[$(date +%T)]: DHCP lease renewed. Retrying connection test.."
-
-		ping -q -c 2 -W 2 -I $TARGET_INTERFACE 8.8.8.8 > /dev/null
-		if [ $? -eq 0 ]; then
-			echo "[$(date +%T)]: Phase 1 Successful! Interface restored to HEALTHY."
+	#continually checks a response from an intended 100% reliable server
+	while true; do
+		if ping_target "$TARGET_INTERFACE" "8.8.8.8" 3; then
+			echo "[$(date +%T)]: HEALTHY. Packets are flowing through $TARGET_INTERFACE."
 			fail_counter=0
 		else
-			# ===================================
-                	#  PHASE 2: RESTART INTERFACE PORT
-                	# ===================================
+			echo "[$(date +%T)]: Layer 3 CRITICAL! 'Back Hole' detected on $TARGET_INTERFACE!"
+			((fail_counter++))
+		fi
 
-			echo "Phase 2: Restart network interface port"
-			sudo ip link set $TARGET_INTERFACE down
-			echo "$TARGET_INTERFACE shut down, wait 10 seconds"
-
-			sleep 10
-
-			sudo ip link set $TARGET_INTERFACE up
-			echo "$TARGET_INTERFACE is up again"
-			echo "[$(date +%T)]: Network interface port restarted. Retrying connection test.."
-		
-			# Confirm if problem is solved
-			ping -q -c 2 -W 2 -I $TARGET_INTERFACE 8.8.8.8 > /dev/null
-			if [ $? -eq 0 ]; then
-				echo "[$(date +%T)]: Phase 2 Successful! Interface restored to HEALTHY."
+		# Escalation Engine triggers when error threshold is breached
+		if ((fail_counter >= 4)); then
+			echo "[$(date +%T)]: Connection is lost! Threshold reached ($fail_counter errors). Initializing recovery sequence..."
+	    
+			# -----------------------------   phase 1   ------------------------
+			recover_dhcp "$TARGET_INTERFACE"
+			if ping_target "$TARGET_INTERFACE" "8.8.8.8" 2; then
+				echo "[$(date +%T)]: Phase 1 Successful! Interface restored to HEALTHY."
 				fail_counter=0
-		
 			else
-				# ==========================
-				# PHASE 3: ROUTE FAILOVER
-				# ==========================
-				echo "[$(date +%T)]: Phase 2 failed. Initiating phase 3"
-				echo "Phase 3: Change Route Failover to Backup interface"
-				sudo ip route del default dev $TARGET_INTERFACE
-				echo "Removed current route"
-				sudo ip route add default via 192.168.1.1 dev enp3s0
-				echo "[$(date +%T)]: FAILOVER COMPLETE. System shifted to enp3s0"
-
-				# Break out or pause monitoring to prevent infinite loops
-				fail_counter=0
+				# -----------------------------   phase 2   ------------------------
+				echo "[$(date +%T)]: Phase 1 failed. Escalating to Phase 2..."
+				recover_interface_flap "$TARGET_INTERFACE"
+				
+				if ping_target "$TARGET_INTERFACE" "8.8.8.8" 2; then
+					echo "[$(date +%T)]: Phase 2 Successful! Interface restored to HEALTHY."
+					fail_counter=0
+				else
+					# -----------------------------   phase 3   ------------------------
+					echo "[$(date +%T)]: Phase 2 failed. Escalating to structural Phase 3 failover..."
+					recover_route_failover "$TARGET_INTERFACE"
+					TARGET_INTERFACE="enp3s0"
+					fail_counter=0
+				fi
 			fi
 		fi
-	fi	
 	
-	# Pause for 5 seconds
 	sleep 5
-done
+	done
+}
+
+
+# ==============
+# THE TRIGGER
+# ==============
+main
