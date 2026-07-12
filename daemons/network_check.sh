@@ -30,6 +30,46 @@ ping_target()
 }
 
 
+# ===================
+# RECOVERY METHODS
+# ===================
+
+recover_dhcp()
+{
+	local interface=$1
+	echo "[$(date +%T)]: Phase 1 -> Releasing and renewing IP lease via DHCP on $interface.."
+	sudo dhclient -r "$interface"
+	sleep 3
+	sudo dhclient "$interface"
+	echo "[$(date +%T)]: DHCP lease renewed. Retrying connectoin test.."
+}
+
+
+recover_interface_flap()
+{
+	local interface=$1
+	echo "[$(date +%T)]: Phase 2-> Toggling interface port state (shutdown / no shutdown): $interface)"
+	sudo /usr/sbin/ip link set "$interface" down
+	echo "$interface is SHUTDOWN. Waiting 10 seconds..."
+	sleep 10
+	sudo /usr/sbin/ip link set "$interface" up
+	echo "$interface is UP (no shutdown). Retrying connection test..."
+}
+
+
+recover_route_failover()
+{
+	local primary_if=$1
+	local backup_if="enp3s0"
+	local backup_gw="192.168.1.1"
+	
+	echo "[$(date +%T)]: Phase 3 -> Changing Route Failover to Backup interface..."
+	sudo /usr/sbin/ip link set "$primary_if" down
+	sudo /usr/sbin/ip route del default dev "$primary_if" > /dev/null 2>&1
+	sudo /usr/sbin/ip route add default via "$backup_gw" dev "$backup_if"
+	echo "[$(date +%T)]: FAILOVER COMPLETE. System shifted routing engine to $backup_if"
+}
+
 # ==============
 # MAIN SCRIPT
 # ==============
@@ -57,10 +97,34 @@ main()
 			((fail_counter++))
 		fi
 
-		if ((fail_counter == 4)); then
-			echo "Connection is lost"
+		# Escalation Engine triggers when error threshold is breached
+		if ((fail_counter >= 4)); then
+			echo "[$(date +%T)]: Connection is lost! Threshold reached ($fail_counter errors). Initializing recovery sequence..."
+	    
+			# -----------------------------   phase 1   ------------------------
+			recover_dhcp "$TARGET_INTERFACE"
+			if ping_target "$TARGET_INTERFACE" "8.8.8.8" 2; then
+				echo "[$(date +%T)]: Phase 1 Successful! Interface restored to HEALTHY."
+				fail_counter=0
+			else
+				# -----------------------------   phase 2   ------------------------
+				echo "[$(date +%T)]: Phase 1 failed. Escalating to Phase 2..."
+				recover_interface_flap "$TARGET_INTERFACE"
+				
+				if ping_target "$TARGET_INTERFACE" "8.8.8.8" 2; then
+					echo "[$(date +%T)]: Phase 2 Successful! Interface restored to HEALTHY."
+					fail_counter=0
+				else
+					# -----------------------------   phase 3   ------------------------
+					echo "[$(date +%T)]: Phase 2 failed. Escalating to structural Phase 3 failover..."
+					recover_route_failover "$TARGET_INTERFACE"
+					TARGET_INTERFACE="enp3s0"
+					fail_counter=0
+				fi
+			fi
 		fi
-		sleep 5
+	
+	sleep 5
 	done
 }
 
