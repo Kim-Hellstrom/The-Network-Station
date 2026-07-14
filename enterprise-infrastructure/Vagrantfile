@@ -1,0 +1,83 @@
+                                            # ============================
+                                            #   App memory configuration
+                                            # ============================
+
+# ==================
+# Global Varibles
+# ==================
+
+ubuntu_version = "generic/ubuntu2204"
+vm_machine = "virtualbox"
+vm_user = "vagrant"
+ram_size = 2048
+amount_of_cpu = 2
+amount_of_vm_instances = 1 # Preset to 1, but change the value for how many instance servers you need
+
+
+# ================
+# Configuration
+# ================
+
+Vagrant.configure("2") do |config|
+  # We will loop desired amount creating our vm's
+  (1..amount_of_vm_instances).each do |i|
+    vm_name = "web-#{i}"
+
+    # define the vm instance
+    config.vm.define vm_name do |subconfig|
+      # set the os iso for each vm
+      subconfig.vm.box = ubuntu_version
+
+      # Force-enable the default synced folder
+      subconfig.vm.synced_folder ".", "/#{vm_user}", owner: (vm_user), group: (vm_user)
+
+      # set the vm manager
+      subconfig.vm.provider(vm_machine) do |vb|
+        #sets the name of the VM in VirtualBox GUI
+        vb.name = vm_name
+        # sets the RAM size to run for a VM
+        vb.memory = ram_size
+        # sets the CPU amount to run for a VM
+        vb.cpus = amount_of_cpu
+      end
+
+
+  # ===============================
+  # Installing necessary plugins
+  # ===============================
+
+      subconfig.vm.provision "shell", inline: <<-SHELL
+        echo "=================================================="
+        echo "  System Setup: Optimizing package sources.."
+        echo "=================================================="
+        
+        # Fix flaky regional mirrors by pointing to the main archive instead
+        sudo sed -i 's|https\?://mirrors.edge.kernel.org/ubuntu/|http://archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list
+
+        # Clean out old packages from cache and refresh lists
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
+        sudo apt-get update -y
+
+        echo "=================================================="
+        echo "  System Setup: Installing Guest Utilities.."
+        echo "=================================================="
+        
+        sudo apt-get install -y virtualbox-guest-utils
+
+        # Ensure the mount exists and mount the folder
+        sudo mkdir -p /vagrant
+        sudo mount -t vboxsf vagrant /vagrant
+
+        echo "=================================================="
+        echo "  System Setup: Setup Completed!"
+        echo "=================================================="
+
+        echo "command to get started:"
+        echo "vagrant up"
+        echo "vagrant ssh web-'n' <-- n = web server you try to access"
+      SHELL
+    end
+
+  end
+end
