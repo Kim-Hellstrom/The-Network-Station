@@ -19,64 +19,77 @@ amount_of_vm_instances = 1 # Preset to 1, but change the value for how many inst
 # ================
 
 Vagrant.configure("2") do |config|
-  # We will loop desired amount creating our vm's
-  (1..amount_of_vm_instances).each do |i|
-    vm_name = "web-#{i}"
+    
+    # Auto-approve VirtualBox Guest Additions installer prompts
+    if Vagrant.has_plugin?("vagrant-vbguest")
+        config.vbguest.auto_update = false
+    end
 
-    # define the vm instance
-    config.vm.define vm_name do |subconfig|
-      # set the os iso for each vm
-      subconfig.vm.box = ubuntu_version
+    # We will loop desired amount creating our vm's
+    (1..amount_of_vm_instances).each do |i|
+        vm_name = "web-#{i}"
 
-      # Force-enable the default synced folder
-      subconfig.vm.synced_folder ".", "/#{vm_user}", owner: (vm_user), group: (vm_user)
+        # define the vm instance
+        config.vm.define vm_name do |subconfig|
+        # set the os iso for each vm
+        subconfig.vm.box = ubuntu_version
 
-      # set the vm manager
-      subconfig.vm.provider(vm_machine) do |vb|
-        #sets the name of the VM in VirtualBox GUI
-        vb.name = vm_name
-        # sets the RAM size to run for a VM
-        vb.memory = ram_size
-        # sets the CPU amount to run for a VM
-        vb.cpus = amount_of_cpu
-      end
+        # Force-enable the default synced folder
+        subconfig.vm.synced_folder ".", "/#{vm_user}", owner: (vm_user), group: (vm_user)
+
+        # set the vm manager
+        subconfig.vm.provider(vm_machine) do |vb|
+            #sets the name of the VM in VirtualBox GUI
+            vb.name = vm_name
+            # sets the RAM size to run for a VM
+            vb.memory = ram_size
+            # sets the CPU amount to run for a VM
+            vb.cpus = amount_of_cpu
+        end
 
 
   # ===============================
   # Installing necessary plugins
   # ===============================
 
-      subconfig.vm.provision "shell", inline: <<-SHELL
-        echo "=================================================="
-        echo "  System Setup: Optimizing package sources.."
-        echo "=================================================="
+        subconfig.vm.provision "shell", inline: <<-SHELL
+            # Needs to tell the shell that we can't say yes/no in an automatic script
+            export DEBIAN_FRONTEND=noninteractive
+
+            echo "=================================================="
+            echo "  System Setup: Optimizing package sources.."
+            echo "=================================================="
         
-        # Fix flaky regional mirrors by pointing to the main archive instead
-        sudo sed -i 's|https\?://mirrors.edge.kernel.org/ubuntu/|http://archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list
+            # Fix flaky regional mirrors by pointing to the main archive instead
+            sudo sed -i 's|https\?://mirrors.edge.kernel.org/ubuntu/|http://archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list
 
-        # Clean out old packages from cache and refresh lists
-        sudo apt-get clean
-        sudo rm -rf /var/lib/apt/lists/*
-        sudo apt-get update -y
+            # Clean out old packages from cache and refresh lists
+            sudo apt-get clean
+            sudo rm -rf /var/lib/apt/lists/*
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 
-        echo "=================================================="
-        echo "  System Setup: Installing Guest Utilities.."
-        echo "=================================================="
-        
-        sudo apt-get install -y virtualbox-guest-utils
+            echo "=================================================="
+            echo "  System Setup: Installing Nginx.."
+            echo "=================================================="
 
-        # Ensure the mount exists and mount the folder
-        sudo mkdir -p /vagrant
-        sudo mount -t vboxsf vagrant /vagrant
+            echo "Installing Nginx"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
 
-        echo "=================================================="
-        echo "  System Setup: Setup Completed!"
-        echo "=================================================="
+            echo "Configuring Nginx to point to the shared folder"
+            # This  automatically edits the root path in the default config file
+            sudo sed -i 's|root /var/www/html;|root /vagrant;|g' /etc/nginx/sites-available/default
 
-        echo "command to get started:"
-        echo "vagrant up"
-        echo "vagrant ssh web-'n' <-- n = web server you try to access"
-      SHELL
+            echo "Restarting Nginx to apply changes.."
+            sudo systemctl restart nginx
+
+            echo "=================================================="
+            echo "  System Setup: Setup Completed!"
+            echo "=================================================="
+
+            echo "command to get started:"
+            echo "vagrant up"
+            echo "vagrant ssh web-'n' <-- n = web server you try to access"
+        SHELL
     end
 
   end
