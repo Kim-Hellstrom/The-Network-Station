@@ -70,6 +70,20 @@ Vagrant.configure("2") do |config|
         sudo mount -t vboxsf vagrant /vagrant
 
         echo "=================================================="
+        echo "  System Setup: Installing Nginx.."
+        echo "=================================================="
+
+        echo "Installing Nginx"
+        sudo apt-get install -y nginx
+
+        echo "Configuring Nginx to point to the shared folder"
+        # This  automatically edits the root path in the default config file
+        sudo sed -i 's|root /var/www/html;|root /vagrant;|g' /etc/nginx/sites-available/default
+
+        echo "Restarting Nginx to apply changes.."
+        sudo systemctl restart nginx
+
+        echo "=================================================="
         echo "  System Setup: Setup Completed!"
         echo "=================================================="
 
