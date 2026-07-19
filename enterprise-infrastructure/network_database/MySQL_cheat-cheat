@@ -1,0 +1,25 @@
+======================================================================
+                  THE CORE SQL COMMAND DICTIONARY
+======================================================================
+
+  [ DATABASE MANAGEMENT ]
+  * CREATE DATABASE name;         -> Create a new sandbox
+  * DROP DATABASE name;           -> Permanently delete a database
+  * SHOW DATABASES;               -> List all databases on server
+  * USE name;                     -> Switch into a database
+
+  [ TABLE STRUCTURE ]
+  * SHOW TABLES;                  -> List all tables in current DB
+  * DESCRIBE table_name;          -> View columns, types, and keys
+  * DROP TABLE table_name;        -> Delete an entire table structure
+  * ALTER TABLE table_name ...    -> Change columns or add keys
+
+  [ DATA INSIDE TABLES (DML) ]
+  * INSERT INTO table (cols) VALUES (vals); -> Add new rows
+  * SELECT * FROM table;                    -> Read all data from table
+  * UPDATE table SET col=val WHERE rule;    -> Change existing data
+  * DELETE FROM table WHERE rule;           -> Remove specific rows
+
+======================================================================
+  PRO TIP: Use 'WHERE' on UPDATE and DELETE or you will wipe the DB!
+======================================================================
